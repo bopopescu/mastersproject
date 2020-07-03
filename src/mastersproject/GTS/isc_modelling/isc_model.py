@@ -168,6 +168,12 @@ class ISCBiotContactMechanics(ContactMechanicsBiotBase):
         area/volume (or "specific volume") for intersections of co-dimension 2 and 3.
         See also specific_volume.
         """
+        if g.dim == self.Nd - 2:
+            fracs = self.gb.grids_of_dimension(self.Nd-1)
+            aps = [self.aperture(f, scaled, from_iterate) for f in fracs]
+            max_ap = np.max(np.hstack(aps))
+            return np.ones(g.num_cells) * max_ap
+
         a_init = self.compute_initial_aperture(g, scaled=scaled)
         a_mech = self.mechanical_aperture(g, from_iterate=from_iterate)
         if not scaled:
@@ -401,7 +407,7 @@ class ISCBiotContactMechanics(ContactMechanicsBiotBase):
     def before_newton_iteration(self) -> None:
         # Re-discretize the nonlinear term
         super().before_newton_iteration()
-        self.assembler.discretize(term_filter=["!grad_p", "!div_u", "!stabilization"])
+        self.assembler.discretize(term_filter=["!grad_p", "!div_u", "!stabilization", "!mpsa"])
         # for g, _ in self.gb:
         #     if g.dim < self.Nd:
         #         self.assembler.discretize(grid=g)
