@@ -368,14 +368,18 @@ class ISCBiotContactMechanics(ContactMechanicsBiotBase):
         """ Pressure-controlled injection"""
         for g, d in self.gb:
             wells = g.tags["well_cells"]
+            # Assume for now that only one grid injection cell
             if np.sum(np.abs(wells)) > 0:
                 dof_ind = self.assembler.dof_ind(g, self.scalar_variable)
                 loc = np.where(wells != 0)[0]
                 glob_ind = dof_ind[loc]
-                A, b = self.assembler.assemble_matrix_rhs(matrix_format="csr")
-                self.csr_zero_rows(A, glob_ind)
-                A[glob_ind, glob_ind] = 1
-                b[glob_ind] = pressure
+                break
+
+        A, b = self.assembler.assemble_matrix_rhs(matrix_format="csr")
+        self.csr_zero_rows(A, glob_ind)
+        A[glob_ind, glob_ind] = 1
+        b[glob_ind] = pressure
+        return A, b
 
     def csr_zero_rows(self, csr, rows_to_zero):
         """ Efficient way to set csr sparse matrix row to zero.
@@ -408,6 +412,8 @@ class ISCBiotContactMechanics(ContactMechanicsBiotBase):
         # Re-discretize the nonlinear term
         super().before_newton_iteration()
         self.assembler.discretize(term_filter=["!grad_p", "!div_u", "!stabilization", "!mpsa"])
+        # Pressure-controlled injection. See ISC Experiment Description (~avg. pressure used).
+
         # for g, _ in self.gb:
         #     if g.dim < self.Nd:
         #         self.assembler.discretize(grid=g)
@@ -663,3 +669,45 @@ class ISCBiotContactMechanics(ContactMechanicsBiotBase):
                 params.update_dictionaries(
                     [self.mechanics_parameter_key], [mech_params],
                 )
+                
+
+    @timer(logger, level="INFO")
+    def assemble_and_solve_linear_system(self, tol: float) -> np.ndarray:
+        """ Assemble a solve the linear system"""
+        from pypardiso import spsolve
+
+        #p = 4 * pp.MEGA * (pp.PASCAL / self.params.scalar_scale)
+        #A, b = self.source_scalar_pressure(p)
+        A, b = self.assembler.assemble_matrix_rhs()
+
+        # Estimate condition number
+        logger.info(f"Max element in A {np.max(np.abs(A)):.2e}")
+        logger.info(
+            f"Max {np.max(np.sum(np.abs(A), axis=1)):.2e} and "
+            f"min {np.min(np.sum(np.abs(A), axis=1)):.2e} A sum."
+        )
+
+        # UMFPACK Estimate of condition number
+        sum_diag_abs_A = np.abs(A.diagonal())
+        logger.info(
+            f"UMFPACK Condition number estimate: "
+            f"{np.min(sum_diag_abs_A) / np.max(sum_diag_abs_A) :.2e}"
+        )
+
+        if self.params.linear_solver == "direct":
+            tic = time.time()
+            logger.info("Solve Ax=b using scipy")
+            # sol = spla.spsolve(A, b)
+            sol = spsolve(A, b)  # pypardiso
+            logger.info(f"Done. Elapsed time {time.time() - tic}")
+            norm = np.linalg.norm(b - A * sol)
+            logger.info(f"||b-Ax|| = {norm}")
+
+            rhs_norm = np.linalg.norm(b)
+            identical_zero = np.isclose(rhs_norm, 0) and np.isclose(norm, 0)
+            rel_norm = norm / rhs_norm if not identical_zero else norm
+            logger.info(f"||b-Ax|| / ||b|| = {rel_norm}")
+            return sol
+
+        else:
+            raise ValueError(f"Unknown linear solver {self.params.linear_solver}")

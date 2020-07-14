@@ -212,9 +212,10 @@ class TestISCBiotContactMechanics:
             # Base parameters
             length_scale=12.8,
             scalar_scale=1e10,
-            head="2frac/20l_min/inj-frac-center/dilation",
+            base="/home/haakonervik/mastersproject-data",
+            head="2frac/steady-stateinj-1_lminMPa-frac-center-4MPa",
             time_step=pp.MINUTE,
-            end_time=7 * pp.MINUTE,
+            end_time=3 * pp.MINUTE,
             rock=GrimselGranodiorite(),
             # Geometry parameters
             shearzone_names=["S1_2", "S3_1"],
@@ -227,15 +228,15 @@ class TestISCBiotContactMechanics:
             stress=stress_tensor(),
             dilation_angle=(np.pi / 180) * 5,  # 5 degrees dilation angle.
             newton_options={
-                "max_iterations": 40,
-                "nl_convergence_tol": 1e-10,
+                "max_iterations": 60,
+                "nl_convergence_tol": 1e-8,
                 "nl_divergence_tol": 1e5,
             },
             # Flow parameters
             source_scalar_borehole_shearzone={"shearzone": "S1_2", "borehole": "INJ1",},
             well_cells=center_of_shearzone_injection_cell,
-            injection_rate=(10 / 60) * 2,  # (10/60)*2 = 20l per 60s = 20 l/min
-            frac_transmissivity=[1e-9, 3.7e-7],
+            injection_rate=(1/60) * 4,# steady-state injection. For intvl T=1e-7 m2/s => 1 (l/min)/MPa  ||  (10 / 60) * 2,  # (10/60)*2 = 20l per 60s = 20 l/min
+            frac_transmissivity=[3.7e-7,3.7e-7]  # (original): [1e-9, 3.7e-7],
         )
 
         setup = NeverFailtBiotCM(params)
